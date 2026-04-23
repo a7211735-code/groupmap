@@ -412,8 +412,89 @@
 
 <div class="corner-deco">ADS · Growth</div>
 
+<!-- PASSWORD MODAL -->
+<div id="pw-overlay" style="display:none; position:fixed; inset:0; z-index:500; background:rgba(10,10,15,0.92); backdrop-filter:blur(16px); align-items:center; justify-content:center;">
+  <div id="pw-box" style="width:340px; border:1px solid rgba(201,168,76,0.4); background:#111118; padding:2.5rem 2rem; text-align:center; position:relative;">
+    <div style="font-family:'Space Mono',monospace; font-size:0.6rem; letter-spacing:0.3em; color:#C9A84C; margin-bottom:1.2rem;" id="pw-label">INTERMEDIATE · 中階篇</div>
+    <div style="font-size:1.4rem; font-weight:900; color:#EDE8DC; margin-bottom:0.5rem;" id="pw-title">請輸入密碼</div>
+    <div style="font-size:0.8rem; color:#8A846E; margin-bottom:1.8rem; letter-spacing:0.05em;">此章節需要密碼才能進入</div>
+
+    <!-- Dot display -->
+    <div id="pw-dots" style="display:flex; justify-content:center; gap:0.7rem; margin-bottom:1.8rem;">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+
+    <!-- Numpad -->
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:0.6rem; margin-bottom:1rem;">
+      <button class="numpad-btn" onclick="numInput('1')">1</button>
+      <button class="numpad-btn" onclick="numInput('2')">2</button>
+      <button class="numpad-btn" onclick="numInput('3')">3</button>
+      <button class="numpad-btn" onclick="numInput('4')">4</button>
+      <button class="numpad-btn" onclick="numInput('5')">5</button>
+      <button class="numpad-btn" onclick="numInput('6')">6</button>
+      <button class="numpad-btn" onclick="numInput('7')">7</button>
+      <button class="numpad-btn" onclick="numInput('8')">8</button>
+      <button class="numpad-btn" onclick="numInput('9')">9</button>
+      <button class="numpad-btn" onclick="numClear()" style="color:#C9A84C; font-size:0.75rem; letter-spacing:0.05em;">清除</button>
+      <button class="numpad-btn" onclick="numInput('0')">0</button>
+      <button class="numpad-btn" onclick="numDelete()" style="font-size:1.1rem;">⌫</button>
+    </div>
+
+    <div id="pw-error" style="color:#c0392b; font-size:0.78rem; letter-spacing:0.05em; min-height:1.2rem; margin-bottom:0.5rem;"></div>
+    <button onclick="closeOverlay()" style="background:none; border:none; color:#8A846E; font-family:'Noto Serif TC',serif; font-size:0.8rem; cursor:pointer; letter-spacing:0.05em; margin-top:0.3rem;">取消</button>
+  </div>
+</div>
+
+<style>
+  .dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(201,168,76,0.5);
+    background: transparent;
+    transition: background 0.2s, border-color 0.2s;
+    display: inline-block;
+  }
+  .dot.filled { background: #C9A84C; border-color: #C9A84C; }
+
+  .numpad-btn {
+    background: #1A1A24;
+    border: 1px solid rgba(201,168,76,0.2);
+    color: #EDE8DC;
+    font-family: 'Space Mono', monospace;
+    font-size: 1.1rem;
+    padding: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .numpad-btn:hover { background: #25252f; border-color: rgba(201,168,76,0.5); }
+  .numpad-btn:active { background: rgba(201,168,76,0.15); }
+
+  @keyframes shake {
+    0%,100%{transform:translateX(0)}
+    20%{transform:translateX(-8px)}
+    40%{transform:translateX(8px)}
+    60%{transform:translateX(-6px)}
+    80%{transform:translateX(6px)}
+  }
+  .shake { animation: shake 0.4s ease; }
+</style>
+
 <script>
+  const PASSWORDS = { 1: '888', 2: '000' };
+  let pendingTab = null;
+  let unlocked = { 0: true, 1: false, 2: false };
+  let currentInput = '';
+
   function switchTab(index) {
+    if (unlocked[index]) {
+      activateTab(index);
+    } else {
+      pendingTab = index;
+      openOverlay(index);
+    }
+  }
+
+  function activateTab(index) {
     document.querySelectorAll('.tab-btn').forEach((btn, i) => {
       btn.classList.toggle('active', i === index);
     });
@@ -421,6 +502,66 @@
       page.classList.toggle('active', i === index);
     });
   }
+
+  function openOverlay(index) {
+    currentInput = '';
+    updateDots();
+    document.getElementById('pw-error').textContent = '';
+    document.getElementById('pw-label').textContent = index === 1 ? 'INTERMEDIATE · 中階篇' : 'ADVANCED · 高階篇';
+    const overlay = document.getElementById('pw-overlay');
+    overlay.style.display = 'flex';
+  }
+
+  function closeOverlay() {
+    document.getElementById('pw-overlay').style.display = 'none';
+    pendingTab = null;
+    currentInput = '';
+    updateDots();
+  }
+
+  function numInput(n) {
+    if (currentInput.length >= 3) return;
+    currentInput += n;
+    updateDots();
+    if (currentInput.length === 3) checkPassword();
+  }
+
+  function numDelete() {
+    currentInput = currentInput.slice(0, -1);
+    updateDots();
+  }
+
+  function numClear() {
+    currentInput = '';
+    updateDots();
+  }
+
+  function updateDots() {
+    document.querySelectorAll('.dot').forEach((dot, i) => {
+      dot.classList.toggle('filled', i < currentInput.length);
+    });
+  }
+
+  function checkPassword() {
+    setTimeout(() => {
+      if (currentInput === PASSWORDS[pendingTab]) {
+        unlocked[pendingTab] = true;
+        closeOverlay();
+        activateTab(pendingTab);
+      } else {
+        document.getElementById('pw-error').textContent = '密碼錯誤，請再試一次';
+        document.getElementById('pw-box').classList.add('shake');
+        setTimeout(() => document.getElementById('pw-box').classList.remove('shake'), 400);
+        currentInput = '';
+        updateDots();
+      }
+    }, 120);
+  }
+
+  // Allow closing overlay by clicking outside
+  document.getElementById('pw-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeOverlay();
+  });
 </script>
 </body>
 </html>
