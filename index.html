@@ -891,31 +891,95 @@
   </div><!-- /chart-block -->
 </div><!-- /charts-section -->
 
+<!-- ── GAS API 設定面板 ── -->
+<div id="api-setup-bar" style="background:#111118;border:1px solid rgba(201,168,76,0.35);max-width:960px;margin:0 auto 2rem;padding:1rem 1.5rem;display:flex;align-items:center;flex-wrap:wrap;gap:0.8rem;">
+  <div style="font-family:'Space Mono',monospace;font-size:0.62rem;color:#C9A84C;letter-spacing:0.2em;white-space:nowrap;">⚙ GOOGLE SHEETS API</div>
+  <input id="gas-url-input" type="text" placeholder="貼上 Apps Script 部署網址（https://script.google.com/macros/s/...）"
+    style="flex:1;min-width:240px;background:#0A0A0F;border:1px solid rgba(201,168,76,0.25);color:#EDE8DC;
+    font-family:'Space Mono',monospace;font-size:0.75rem;padding:0.45rem 0.8rem;outline:none;">
+  <button onclick="saveApiUrl()" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.5);
+    color:#C9A84C;font-family:'Noto Serif TC',serif;font-size:0.8rem;padding:0.45rem 1.2rem;cursor:pointer;white-space:nowrap;">
+    儲存連線
+  </button>
+  <div id="api-status" style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#8A846E;letter-spacing:0.1em;white-space:nowrap;">未連線（使用本機暫存）</div>
+</div>
+
 <script>
 (function() {
   // ── CONFIG ──
   const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const LS_KEY_URL  = 'ads_gas_url';
+  const LS_KEY_DATA = 'ads_chart_data';
 
   const FANS_SERIES = [
-    { key: 'fb',       label: '臉書',   color: '#4A90D9' },
-    { key: 'ig',       label: 'IG',     color: '#C9A84C' },
-    { key: 'threads',  label: 'Threads',color: '#A888D4' },
-    { key: 'tiktok',   label: 'TikTok', color: '#E05A7A' },
-    { key: 'xhs',      label: '小紅書', color: '#E8453C' },
+    { key: 'fb',      label: '臉書',    color: '#4A90D9' },
+    { key: 'ig',      label: 'IG',      color: '#C9A84C' },
+    { key: 'threads', label: 'Threads', color: '#A888D4' },
+    { key: 'tiktok',  label: 'TikTok',  color: '#E05A7A' },
+    { key: 'xhs',     label: '小紅書',  color: '#E8453C' },
   ];
-
   const CLIENTS_SERIES = [
-    { key: 'new',      label: '新客',   color: '#4FC08D' },
-    { key: 'repeat',   label: '回購',   color: '#C9A84C' },
-    { key: 'intern',   label: '實習',   color: '#4A90D9' },
-    { key: 'level3',   label: '三級',   color: '#E8453C' },
+    { key: 'new',    label: '新客', color: '#4FC08D' },
+    { key: 'repeat', label: '回購', color: '#C9A84C' },
+    { key: 'intern', label: '實習', color: '#4A90D9' },
+    { key: 'level3', label: '三級', color: '#E8453C' },
   ];
 
-  // ── STATE ──
-  const state = {
-    fans:    { year: 2025, data: {} },
-    clients: { year: 2025, data: {} },
+  // ── API URL 管理 ──
+  let GAS_URL = 'https://script.google.com/macros/s/AKfycbxyOBNPTqbZR_J_O1q-Dt-BA5TY3Y2D58AXWlXFdJ4WwZVSp2XVqbqXU-xazx1NhFA/exec';
+  try { GAS_URL = localStorage.getItem(LS_KEY_URL) || GAS_URL; } catch(e){}
+
+  window.saveApiUrl = function() {
+    const val = document.getElementById('gas-url-input').value.trim();
+    if (!val.startsWith('https://script.google.com')) {
+      setStatus('⚠ 請貼上正確的 Apps Script 網址', '#E8453C'); return;
+    }
+    GAS_URL = val;
+    try { localStorage.setItem(LS_KEY_URL, val); } catch(e){}
+    setStatus('🔄 連線測試中…', '#C9A84C');
+    // 測試連線
+    fetch(GAS_URL + '?action=getAll&year=' + state.fans.year)
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          setStatus('✅ 已連線 Google Sheets', '#4FC08D');
+          applyRemoteData('fans', d.fans);
+          applyRemoteData('clients', d.clients);
+          refreshChart('fans');
+          refreshChart('clients');
+        } else { setStatus('❌ 連線失敗：' + d.error, '#E8453C'); }
+      })
+      .catch(() => setStatus('❌ 無法連線，請確認部署設定', '#E8453C'));
   };
+
+  function setStatus(msg, color) {
+    const el = document.getElementById('api-status');
+    el.textContent = msg;
+    el.style.color = color || '#8A846E';
+  }
+
+  // 初始化時顯示已儲存的 URL
+  if (GAS_URL) {
+    document.getElementById('gas-url-input').value = GAS_URL;
+    setStatus('✅ 已設定 Google Sheets 連線', '#4FC08D');
+  }
+
+  // ── STATE（含本機 localStorage 備援）──
+  const state = {
+    fans:    { year: new Date().getFullYear(), data: {} },
+    clients: { year: new Date().getFullYear(), data: {} },
+  };
+
+  // 從 localStorage 讀取快取
+  try {
+    const cached = JSON.parse(localStorage.getItem(LS_KEY_DATA) || '{}');
+    if (cached.fans)    state.fans.data    = cached.fans;
+    if (cached.clients) state.clients.data = cached.clients;
+  } catch(e){}
+
+  function saveLocalCache() {
+    try { localStorage.setItem(LS_KEY_DATA, JSON.stringify({ fans: state.fans.data, clients: state.clients.data })); } catch(e){}
+  }
 
   function makeKey(chartId, year) { return chartId + '_' + year; }
 
@@ -928,6 +992,48 @@
       state[chartId].data[k] = obj;
     }
     return state[chartId].data[k];
+  }
+
+  function applyRemoteData(chartId, remoteObj) {
+    if (!remoteObj) return;
+    const year = state[chartId].year;
+    const k = makeKey(chartId, year);
+    state[chartId].data[k] = remoteObj;
+    saveLocalCache();
+  }
+
+  // ── 從 GAS 載入某年資料 ──
+  function loadFromSheets(chartId, year) {
+    if (!GAS_URL) return;
+    const action = chartId === 'fans' ? 'getFans' : 'getClients';
+    setStatus('🔄 載入中…', '#C9A84C');
+    fetch(`${GAS_URL}?action=${action}&year=${year}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          applyRemoteData(chartId, d.data);
+          refreshChart(chartId);
+          setStatus('✅ 已同步 Google Sheets', '#4FC08D');
+        } else { setStatus('❌ ' + d.error, '#E8453C'); }
+      })
+      .catch(() => setStatus('⚠ 同步失敗，顯示本機資料', '#E05A7A'));
+  }
+
+  // ── 儲存單一儲存格到 GAS ──
+  function saveToSheets(chartId, seriesKey, monthIdx, value) {
+    if (!GAS_URL) return;
+    const action = chartId === 'fans' ? 'saveFans' : 'saveClients';
+    const year = state[chartId].year;
+    fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action, year: String(year), seriesKey, monthIdx, value }),
+    })
+    .then(r => r.json())
+    .then(d => {
+      setStatus(d.ok ? '✅ 已儲存到 Google Sheets' : '❌ 儲存失敗', d.ok ? '#4FC08D' : '#E8453C');
+      setTimeout(() => setStatus('✅ 已連線 Google Sheets', '#4FC08D'), 2000);
+    })
+    .catch(() => setStatus('⚠ 儲存失敗（本機已更新）', '#E05A7A'));
   }
 
   // ── CHART INSTANCES ──
@@ -949,12 +1055,6 @@
       borderRadius: 3,
       borderSkipped: false,
     }));
-  }
-
-  function totalDataset(chartId, year) {
-    const series = chartId === 'fans' ? FANS_SERIES : CLIENTS_SERIES;
-    const data = getData(chartId, year);
-    return MONTHS.map((_, mi) => series.reduce((sum, s) => sum + (data[s.key][mi] || 0), 0));
   }
 
   const CHART_OPTIONS = {
@@ -979,18 +1079,8 @@
       }
     },
     scales: {
-      x: {
-        stacked: true,
-        grid: { color: 'rgba(201,168,76,0.06)' },
-        ticks: { color: '#8A846E' },
-        border: { color: 'rgba(201,168,76,0.15)' },
-      },
-      y: {
-        stacked: true,
-        grid: { color: 'rgba(201,168,76,0.08)' },
-        ticks: { color: '#8A846E', callback: v => v >= 1000 ? (v/1000)+'k' : v },
-        border: { color: 'rgba(201,168,76,0.15)' },
-      }
+      x: { stacked: true, grid: { color: 'rgba(201,168,76,0.06)' }, ticks: { color: '#8A846E' }, border: { color: 'rgba(201,168,76,0.15)' } },
+      y: { stacked: true, grid: { color: 'rgba(201,168,76,0.08)' }, ticks: { color: '#8A846E', callback: v => v >= 1000 ? (v/1000)+'k' : v }, border: { color: 'rgba(201,168,76,0.15)' } }
     }
   };
 
@@ -1003,8 +1093,7 @@
       data: { labels: MONTHS, datasets: buildDatasets(id, year) },
       options: JSON.parse(JSON.stringify(CHART_OPTIONS)),
     });
-
-    // build legend
+    // 圖例
     const legendEl = document.getElementById(id + '-legend');
     series.forEach((s, si) => {
       const item = document.createElement('div');
@@ -1018,7 +1107,6 @@
       });
       legendEl.appendChild(item);
     });
-
     return chart;
   }
 
@@ -1030,14 +1118,16 @@
     refreshTable(chartId);
   }
 
-  // ── YEAR CONTROL ──
+  // ── 年份切換 ──
   window.changeYear = function(chartId, delta) {
     state[chartId].year += delta;
     document.getElementById(chartId + '-year-display').textContent = state[chartId].year;
+    // 先用快取刷新，再從 Sheets 拉最新
     refreshChart(chartId);
+    loadFromSheets(chartId, state[chartId].year);
   };
 
-  // ── TABLE TOGGLE ──
+  // ── 展開/收起輸入表格 ──
   window.toggleTable = function(tableId) {
     const el = document.getElementById(tableId);
     const chartId = tableId.replace('-table', '');
@@ -1053,12 +1143,9 @@
     const year = state[chartId].year;
     const data = getData(chartId, year);
     const tableEl = document.getElementById(chartId + '-data-table');
-
-    // header
     let html = '<thead><tr><th>平台 / 月份</th>';
     MONTHS.forEach(m => { html += `<th>${m}</th>`; });
     html += '</tr></thead><tbody>';
-
     series.forEach(s => {
       html += `<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${s.color};margin-right:6px;vertical-align:middle;"></span>${s.label}</td>`;
       MONTHS.forEach((_, mi) => {
@@ -1067,42 +1154,54 @@
       });
       html += '</tr>';
     });
-
-    // total row
     html += '<tr class="total-row"><td>合計</td>';
     MONTHS.forEach((_, mi) => {
       const total = series.reduce((sum, s) => sum + (data[s.key][mi] || 0), 0);
       html += `<td id="${chartId}-total-${mi}">${total.toLocaleString()}</td>`;
     });
     html += '</tr></tbody>';
-
     tableEl.innerHTML = html;
   }
 
+  // 防抖：輸入停止 0.8 秒後才上傳，避免每按一鍵都觸發
+  const saveTimers = {};
   window.updateData = function(chartId, seriesKey, monthIdx, value) {
     const year = state[chartId].year;
     const data = getData(chartId, year);
     data[seriesKey][monthIdx] = parseInt(value) || 0;
+    saveLocalCache();
 
-    // update total cell
+    // 更新合計欄
     const series = chartId === 'fans' ? FANS_SERIES : CLIENTS_SERIES;
     const total = series.reduce((sum, s) => sum + (data[s.key][monthIdx] || 0), 0);
     const totalCell = document.getElementById(chartId + '-total-' + monthIdx);
     if (totalCell) totalCell.textContent = total.toLocaleString();
 
-    // update chart live
+    // 更新圖表
     const chart = chartId === 'fans' ? fansChart : clientsChart;
     const si = series.findIndex(s => s.key === seriesKey);
-    if (si >= 0) {
-      chart.data.datasets[si].data[monthIdx] = data[seriesKey][monthIdx];
-      chart.update('none');
-    }
+    if (si >= 0) { chart.data.datasets[si].data[monthIdx] = data[seriesKey][monthIdx]; chart.update('none'); }
+
+    // 防抖上傳到 Sheets
+    const timerKey = chartId + seriesKey + monthIdx;
+    clearTimeout(saveTimers[timerKey]);
+    saveTimers[timerKey] = setTimeout(() => saveToSheets(chartId, seriesKey, monthIdx, data[seriesKey][monthIdx]), 800);
   };
 
   // ── INIT ──
   document.addEventListener('DOMContentLoaded', function() {
+    // 更新年份顯示
+    document.getElementById('fans-year-display').textContent    = state.fans.year;
+    document.getElementById('clients-year-display').textContent = state.clients.year;
+
     fansChart    = initChart('fans',    'fansChart');
     clientsChart = initChart('clients', 'clientsChart');
+
+    // 若有儲存的 API URL，自動載入雲端資料
+    if (GAS_URL) {
+      loadFromSheets('fans',    state.fans.year);
+      loadFromSheets('clients', state.clients.year);
+    }
   });
 })();
 </script>
