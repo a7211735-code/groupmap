@@ -891,15 +891,42 @@
   </div><!-- /chart-block -->
 </div><!-- /charts-section -->
 
+<!-- ── 名字登入 Modal ── -->
+<div id="login-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(10,10,15,0.92);backdrop-filter:blur(12px);align-items:center;justify-content:center;">
+  <div style="background:#111118;border:1px solid rgba(201,168,76,0.45);padding:2.5rem 2.5rem 2rem;max-width:400px;width:90%;text-align:center;">
+    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#C9A84C;letter-spacing:0.25em;margin-bottom:1.2rem;">▸ ADS 成長指南</div>
+    <div style="font-family:'Noto Serif TC',serif;font-size:1.35rem;color:#EDE8DC;margin-bottom:0.5rem;font-weight:700;">請輸入你的名稱</div>
+    <div style="font-size:0.8rem;color:#8A846E;margin-bottom:1.8rem;line-height:1.6;">此名稱將用於區分個人資料，<br>之後登入會自動記住</div>
+    <input id="login-name-input" type="text" maxlength="20" placeholder="例：小明、Ada、業務一"
+      style="width:100%;background:#0A0A0F;border:1px solid rgba(201,168,76,0.35);color:#EDE8DC;
+      font-family:'Noto Serif TC',serif;font-size:1rem;padding:0.7rem 1rem;outline:none;
+      text-align:center;margin-bottom:1.2rem;letter-spacing:0.1em;"
+      onkeydown="if(event.key==='Enter')confirmLogin()">
+    <button onclick="confirmLogin()"
+      style="width:100%;background:rgba(201,168,76,0.2);border:1px solid rgba(201,168,76,0.6);
+      color:#C9A84C;font-family:'Noto Serif TC',serif;font-size:1rem;font-weight:700;
+      padding:0.75rem;cursor:pointer;letter-spacing:0.15em;transition:background 0.2s;"
+      onmouseover="this.style.background='rgba(201,168,76,0.35)'"
+      onmouseout="this.style.background='rgba(201,168,76,0.2)'">
+      進入
+    </button>
+  </div>
+</div>
+
 <!-- ── GAS API 設定面板 ── -->
 <div id="api-setup-bar" style="background:#111118;border:1px solid rgba(201,168,76,0.35);max-width:960px;margin:0 auto 2rem;padding:1rem 1.5rem;display:flex;align-items:center;flex-wrap:wrap;gap:0.8rem;">
   <div style="font-family:'Space Mono',monospace;font-size:0.62rem;color:#C9A84C;letter-spacing:0.2em;white-space:nowrap;">⚙ GOOGLE SHEETS API</div>
+  <span id="current-user-label" style="font-family:'Space Mono',monospace;font-size:0.62rem;color:#8A846E;letter-spacing:0.1em;white-space:nowrap;"></span>
   <input id="gas-url-input" type="text" placeholder="貼上 Apps Script 部署網址（https://script.google.com/macros/s/...）"
     style="flex:1;min-width:240px;background:#0A0A0F;border:1px solid rgba(201,168,76,0.25);color:#EDE8DC;
     font-family:'Space Mono',monospace;font-size:0.75rem;padding:0.45rem 0.8rem;outline:none;">
   <button onclick="saveApiUrl()" style="background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.5);
     color:#C9A84C;font-family:'Noto Serif TC',serif;font-size:0.8rem;padding:0.45rem 1.2rem;cursor:pointer;white-space:nowrap;">
     儲存連線
+  </button>
+  <button onclick="switchUser()" style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);
+    color:#8A846E;font-family:'Noto Serif TC',serif;font-size:0.75rem;padding:0.45rem 0.9rem;cursor:pointer;white-space:nowrap;">
+    切換用戶
   </button>
   <div id="api-status" style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#8A846E;letter-spacing:0.1em;white-space:nowrap;">未連線（使用本機暫存）</div>
 </div>
@@ -910,6 +937,7 @@
   const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
   const LS_KEY_URL  = 'ads_gas_url';
   const LS_KEY_DATA = 'ads_chart_data';
+  const LS_KEY_USER = 'ads_username';
 
   const FANS_SERIES = [
     { key: 'fb',      label: '臉書',    color: '#4A90D9' },
@@ -925,6 +953,53 @@
     { key: 'level3', label: '三級', color: '#E8453C' },
   ];
 
+  // ── 用戶名稱管理 ──
+  let currentUser = '';
+  try { currentUser = localStorage.getItem(LS_KEY_USER) || ''; } catch(e){}
+
+  function showLoginModal() {
+    const modal = document.getElementById('login-modal');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('login-name-input').focus(), 100);
+  }
+
+  function hideLoginModal() {
+    document.getElementById('login-modal').style.display = 'none';
+  }
+
+  window.confirmLogin = function() {
+    const name = document.getElementById('login-name-input').value.trim();
+    if (!name) {
+      document.getElementById('login-name-input').style.borderColor = '#E8453C';
+      return;
+    }
+    currentUser = name;
+    try { localStorage.setItem(LS_KEY_USER, name); } catch(e){}
+    // 清除舊快取（切換用戶後資料不同）
+    try { localStorage.removeItem(LS_KEY_DATA); } catch(e){}
+    state.fans.data    = {};
+    state.clients.data = {};
+    hideLoginModal();
+    updateUserLabel();
+    // 登入後自動從 Sheets 載入該用戶的資料
+    if (GAS_URL) {
+      loadFromSheets('fans',    state.fans.year);
+      loadFromSheets('clients', state.clients.year);
+    }
+  };
+
+  window.switchUser = function() {
+    document.getElementById('login-name-input').value = currentUser;
+    showLoginModal();
+  };
+
+  function updateUserLabel() {
+    const el = document.getElementById('current-user-label');
+    if (el && currentUser) {
+      el.textContent = '👤 ' + currentUser;
+    }
+  }
+
   // ── API URL 管理 ──
   let GAS_URL = 'https://script.google.com/macros/s/AKfycbxyOBNPTqbZR_J_O1q-Dt-BA5TY3Y2D58AXWlXFdJ4WwZVSp2XVqbqXU-xazx1NhFA/exec';
   try { GAS_URL = localStorage.getItem(LS_KEY_URL) || GAS_URL; } catch(e){}
@@ -938,7 +1013,7 @@
     try { localStorage.setItem(LS_KEY_URL, val); } catch(e){}
     setStatus('🔄 連線測試中…', '#C9A84C');
     // 測試連線
-    fetch(GAS_URL + '?action=getAll&year=' + state.fans.year)
+    fetch(GAS_URL + '?action=getAll&year=' + state.fans.year + '&user=' + encodeURIComponent(currentUser))
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
@@ -1004,10 +1079,10 @@
 
   // ── 從 GAS 載入某年資料 ──
   function loadFromSheets(chartId, year) {
-    if (!GAS_URL) return;
+    if (!GAS_URL || !currentUser) return;
     const action = chartId === 'fans' ? 'getFans' : 'getClients';
     setStatus('🔄 載入中…', '#C9A84C');
-    fetch(`${GAS_URL}?action=${action}&year=${year}`)
+    fetch(`${GAS_URL}?action=${action}&year=${year}&user=${encodeURIComponent(currentUser)}`)
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
@@ -1021,12 +1096,12 @@
 
   // ── 儲存單一儲存格到 GAS ──
   function saveToSheets(chartId, seriesKey, monthIdx, value) {
-    if (!GAS_URL) return;
+    if (!GAS_URL || !currentUser) return;
     const action = chartId === 'fans' ? 'saveFans' : 'saveClients';
     const year = state[chartId].year;
     fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action, year: String(year), seriesKey, monthIdx, value }),
+      body: JSON.stringify({ action, year: String(year), seriesKey, monthIdx, value, user: currentUser }),
     })
     .then(r => r.json())
     .then(d => {
@@ -1197,10 +1272,16 @@
     fansChart    = initChart('fans',    'fansChart');
     clientsChart = initChart('clients', 'clientsChart');
 
-    // 若有儲存的 API URL，自動載入雲端資料
-    if (GAS_URL) {
-      loadFromSheets('fans',    state.fans.year);
-      loadFromSheets('clients', state.clients.year);
+    // 若沒有用戶名稱，顯示登入 modal
+    if (!currentUser) {
+      showLoginModal();
+    } else {
+      updateUserLabel();
+      // 若有儲存的 API URL，自動載入雲端資料
+      if (GAS_URL) {
+        loadFromSheets('fans',    state.fans.year);
+        loadFromSheets('clients', state.clients.year);
+      }
     }
   });
 })();
